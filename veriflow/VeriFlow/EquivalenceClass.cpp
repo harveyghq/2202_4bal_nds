@@ -110,34 +110,17 @@ void EquivalenceClass::clear()
 string EquivalenceClass::toString() const
 {
 	char buffer[1024];
-	sprintf(buffer, "[EquivalenceClass] dl_src (%lu-%s, %lu-%s), dl_dst (%lu-%s, %lu-%s)",
-			this->lowerBound[DL_SRC], ::getMacValueAsString(this->lowerBound[DL_SRC]).c_str(),
-			this->upperBound[DL_SRC], ::getMacValueAsString(this->upperBound[DL_SRC]).c_str(),
-			this->lowerBound[DL_DST], ::getMacValueAsString(this->lowerBound[DL_DST]).c_str(),
-			this->upperBound[DL_DST], ::getMacValueAsString(this->upperBound[DL_DST]).c_str());
+
+	sprintf(buffer, "nw_src (%s-%s), nw_dst (%s-%s), nw_proto(%lu-%lu), tp_src(%lu-%lu), tp_dst(%lu-%lu)",
+			::getIpValueAsString(this->lowerBound[NW_SRC]).c_str(),
+			::getIpValueAsString(this->upperBound[NW_SRC]).c_str(),
+			::getIpValueAsString(this->lowerBound[NW_DST]).c_str(),
+			::getIpValueAsString(this->upperBound[NW_DST]).c_str(),
+			this->lowerBound[NW_PROTO],this->upperBound[NW_PROTO],
+			this->lowerBound[TP_SRC],this->upperBound[TP_SRC],
+			this->lowerBound[TP_DST],this->upperBound[TP_DST]);
 
 	string retVal = buffer;
-	retVal += ", ";
-
-	sprintf(buffer, "nw_src (%lu-%s, %lu-%s), nw_dst (%lu-%s, %lu-%s)",
-			this->lowerBound[NW_SRC], ::getIpValueAsString(this->lowerBound[NW_SRC]).c_str(),
-			this->upperBound[NW_SRC], ::getIpValueAsString(this->upperBound[NW_SRC]).c_str(),
-			this->lowerBound[NW_DST], ::getIpValueAsString(this->lowerBound[NW_DST]).c_str(),
-			this->upperBound[NW_DST], ::getIpValueAsString(this->upperBound[NW_DST]).c_str());
-
-	retVal += buffer;
-	retVal += ", ";
-
-	for(int i = 0; i < ALL_FIELD_INDEX_END_MARKER; i++)
-	{
-		sprintf(buffer, "Field %d (%lu, %lu)", i, this->lowerBound[i], this->upperBound[i]);
-		retVal += buffer;
-
-		if(i < (ALL_FIELD_INDEX_END_MARKER - 1))
-		{
-			retVal += ", ";
-		}
-	}
 
 	return retVal;
 }
