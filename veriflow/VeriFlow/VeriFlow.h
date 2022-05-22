@@ -35,6 +35,8 @@
 #include "thread.h"
 #include "Trie.h"
 
+#include "calcTime.h"
+
 using namespace std;
 
 #define TEST_MODE 0

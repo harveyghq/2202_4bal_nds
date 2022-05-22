@@ -8,7 +8,7 @@
 
 CXXFLAGS =	-O2 -g -Wall -fmessage-length=0 -D_REENTRANT -std=c++11
 
-OBJS =		VeriFlow.o OpenFlowProtocolMessage.o Network.o EquivalenceClass.o ForwardingGraph.o ForwardingLink.o TrieNode.o Rule.o Trie.o EquivalenceRange.o Test.o net.o thread.o StringTokenizer.o
+OBJS =		VeriFlow.o OpenFlowProtocolMessage.o Network.o EquivalenceClass.o ForwardingGraph.o ForwardingLink.o TrieNode.o Rule.o Trie.o EquivalenceRange.o Test.o net.o thread.o StringTokenizer.o calcTime.o
 
 LIBS =		-lpthread
 
