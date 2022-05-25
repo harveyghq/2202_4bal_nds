@@ -67,6 +67,10 @@ vector<EquivalenceClass> faults;
 
 calcTime calctime;
 
+ForwardingGraph* globalGraph = new ForwardingGraph;
+list< IPAtom > globalIP;
+int cur_id = 1;
+
 int main(int argc, char** argv)
 {
 	if(argc == 1)
@@ -515,6 +519,78 @@ bool VeriFlow::addRule(const Rule& rule)
 			}
 
 			leaf->ruleSet->insert(rule);
+			if(rule.type != FORWARDING)
+			{
+				continue;
+			}
+
+			if(rule.priority == INVALID_PRIORITY)
+			{
+				continue;
+			}
+
+			ForwardingLink link(rule, false);
+
+			if(mode == TEST_MODE)
+			{
+				// For the testVerification() experiment present in Test.cpp.
+				if(rule.location.compare(rule.nextHop) == 0)
+				{
+					link.isGateway = true;
+				}
+			}
+			else if(mode == PROXY_MODE)
+			{
+				if(rule.nextHop.compare(rule.fieldValue[NW_DST]) == 0)
+				{
+					link.isGateway = true;
+				}
+				for(unsigned int i=0; i < endhosts.size(); i++){
+					if (rule.nextHop.compare(endhosts[i])==0){
+						link.isGateway = true;
+						break;
+					}
+				}
+			}
+
+			globalGraph->addLink(link);
+
+			// update globalIP
+			auto dst = rule.getEquivalenceRange(NW_DST);
+			fprintf(stdout, "dst ip: %s\n", rule.fieldValue[NW_DST].c_str());
+			if(globalIP.size() == 0) {
+				globalIP.push_back(IPAtom(dst.lowerBound, cur_id++));
+				globalIP.push_back(IPAtom(dst.upperBound, -1));
+				this->print_globalIP();
+			} else {
+				list< IPAtom >::const_iterator itr = globalIP.begin();
+				int last_id = -1;
+				bool getFirst = false;
+				while(itr != globalIP.end()) {
+					if(!getFirst) {
+						if(itr->ip < dst.lowerBound) {
+							last_id = itr->id;
+						} else if(itr->ip == dst.lowerBound) {
+							getFirst = true;
+						} else {
+							globalIP.insert(itr, IPAtom(dst.lowerBound, cur_id++));
+							this->print_globalIP();
+							getFirst = true;
+						}
+					} else {
+						if(itr->ip < dst.upperBound) {
+							last_id = itr->id;
+						} else if(itr->ip == dst.upperBound) {
+							break;
+						} else {
+							globalIP.insert(itr, IPAtom(dst.upperBound, last_id));
+							this->print_globalIP();
+							break;
+						}
+					}
+					itr++;
+				}
+			}
 		}
 		else
 		{
@@ -539,6 +615,21 @@ bool VeriFlow::addRule(const Rule& rule)
 	}
 
 	return true;
+}
+
+IPAtom::IPAtom(uint64_t _ip, int _id) {
+	this->ip = _ip;
+	this->id = _id;
+}
+
+void VeriFlow::print_globalIP()
+{
+	fprintf(stdout, "globalIP:\n");
+	list< IPAtom >::const_iterator itr = globalIP.begin();
+	while(itr != globalIP.end()) {
+		fprintf(stdout, "%lu %d\n", itr->ip, itr->id);
+		itr++;
+	}
 }
 
 bool VeriFlow::removeRule(const Rule& rule)
@@ -1026,14 +1117,14 @@ bool VeriFlow::verifyRule(const Rule& rule, int command, double& updateTime, dou
 
 	// fprintf(stdout, "[VeriFlow::verifyRule] Generating forwarding graphs...\n");
 	gettimeofday(&start, NULL);
-	vector< ForwardingGraph* > vGraph;
-	for(unsigned int i = 0; i < vFinalPacketClasses.size(); i++)
-	{
-		EquivalenceClass packetClass = vFinalPacketClasses[i];
-		// fprintf(stdout, "[VeriFlow::verifyRule] [%u] ecCount: %lu, %s\n", i, ecCount, packetClass.toString().c_str());
-		ForwardingGraph* graph = Trie::getForwardingGraph(TP_DST, vFinalTries[i], packetClass, fp);
-		vGraph.push_back(graph);
-	}
+	// vector< ForwardingGraph* > vGraph;
+	// for(unsigned int i = 0; i < vFinalPacketClasses.size(); i++)
+	// {
+	// 	EquivalenceClass packetClass = vFinalPacketClasses[i];
+	// 	// fprintf(stdout, "[VeriFlow::verifyRule] [%u] ecCount: %lu, %s\n", i, ecCount, packetClass.toString().c_str());
+	// 	ForwardingGraph* graph = Trie::getForwardingGraph(TP_DST, vFinalTries[i], packetClass, fp);
+	// 	vGraph.push_back(graph);
+	// }
 	gettimeofday(&end, NULL);
 	// fprintf(stdout, "[VeriFlow::verifyRule] Generated forwarding graphs.\n");
 
@@ -1046,15 +1137,16 @@ bool VeriFlow::verifyRule(const Rule& rule, int command, double& updateTime, dou
 	gettimeofday(&start, NULL);
 	// Add query code here
 	size_t currentFailures = 0;
-	for(unsigned int i = 0; i < vGraph.size(); i++)
+	for(unsigned int i = 0; i < vFinalPacketClasses.size(); i++)
 	{
 		unordered_set< string > visited;
 		string path;
 		string lastHop = network.getNextHopIpAddress(rule.location,rule.in_port);
 		// fprintf(fp, "start traversing at: %s\n", rule.location.c_str());
-		if(!this->traverseForwardingGraph(vFinalPacketClasses[i], vGraph[i], rule.location, lastHop, visited, path, fp)) {
+		if(!this->traverseForwardingGraph(vFinalPacketClasses[i], globalGraph, rule.location, lastHop, visited, path, fp)) {
 			++currentFailures;
 		}
+		// fprintf(stdout, "start traversing at: %s\n", rule.location.c_str());
 	}
 
 	gettimeofday(&end, NULL);
@@ -1086,10 +1178,10 @@ bool VeriFlow::verifyRule(const Rule& rule, int command, double& updateTime, dou
 	usecTime = (seconds * 1000000) + useconds;
 	queryTime = usecTime;
 
-	for(unsigned int i = 0; i < vGraph.size(); i++)
-	{
-		delete vGraph[i];
-	}
+	// for(unsigned int i = 0; i < vGraph.size(); i++)
+	// {
+	// 	delete vGraph[i];
+	// }
 
 	fprintf(fp, "updateTime = %.2fus packetClassSearchTime = %.2fus graphBuildTime = %.2fus queryTime = %.2fus\n", updateTime, packetClassSearchTime, graphBuildTime, queryTime);
 	fprintf(fp, "totalTime = %.2fus\n", updateTime + packetClassSearchTime + graphBuildTime + queryTime);
@@ -1125,12 +1217,12 @@ bool VeriFlow::traverseForwardingGraph(const EquivalenceClass& packetClass, Forw
 		// fprintf(fp, "[VeriFlow::traverseForwardingGraph] Loop path is:\n");
 		// path = path + " -> " + currentLocation;
 		// fprintf(fp, "%s\n", path.c_str());
-		for(unsigned int i = 0; i < faults.size(); i++) {
-			if (packetClass.subsumes(faults[i])) {
-				faults.erase(faults.begin() + i);
-				i--;
-			}
-		}
+		// for(unsigned int i = 0; i < faults.size(); i++) {
+		// 	if (packetClass.subsumes(faults[i])) {
+		// 		faults.erase(faults.begin() + i);
+		// 		i--;
+		// 	}
+		// }
 		faults.push_back(packetClass);
 
 		return false;
@@ -1149,12 +1241,12 @@ bool VeriFlow::traverseForwardingGraph(const EquivalenceClass& packetClass, Forw
 		// fprintf(fp, "\n");
 		// fprintf(fp, "[VeriFlow::traverseForwardingGraph] Found a BLACK HOLE for the following packet class as current location (%s) not found in the graph.\n", currentLocation.c_str());
 		// fprintf(fp, "[VeriFlow::traverseForwardingGraph] PacketClass: %s\n", packetClass.toString().c_str());
-		for(unsigned int i = 0; i < faults.size(); i++) {
-			if (packetClass.subsumes(faults[i])) {
-				faults.erase(faults.begin() + i);
-				i--;
-			}
-		}
+		// for(unsigned int i = 0; i < faults.size(); i++) {
+		// 	if (packetClass.subsumes(faults[i])) {
+		// 		faults.erase(faults.begin() + i);
+		// 		i--;
+		// 	}
+		// }
 		faults.push_back(packetClass);
 
 		return false;
@@ -1166,12 +1258,12 @@ bool VeriFlow::traverseForwardingGraph(const EquivalenceClass& packetClass, Forw
 		// fprintf(fp, "\n");
 		// fprintf(fp, "[VeriFlow::traverseForwardingGraph] Found a BLACK HOLE for the following packet class as there is no outgoing link at current location (%s).\n", currentLocation.c_str());
 		// fprintf(fp, "[VeriFlow::traverseForwardingGraph] PacketClass: %s\n", packetClass.toString().c_str());
-		for(unsigned int i = 0; i < faults.size(); i++) {
-			if (packetClass.subsumes(faults[i])) {
-				faults.erase(faults.begin() + i);
-				i--;
-			}
-		}
+		// for(unsigned int i = 0; i < faults.size(); i++) {
+		// 	if (packetClass.subsumes(faults[i])) {
+		// 		faults.erase(faults.begin() + i);
+		// 		i--;
+		// 	}
+		// }
 		faults.push_back(packetClass);
 
 		return false;
@@ -1179,7 +1271,8 @@ bool VeriFlow::traverseForwardingGraph(const EquivalenceClass& packetClass, Forw
 
 	graph->links[currentLocation].sort(compareForwardingLink);
 
-	const list< ForwardingLink >& linkList = graph->links[currentLocation];
+	const list< ForwardingLink >& linkList = this->processGraphForPKT(graph->links[currentLocation], packetClass);
+	// const list< ForwardingLink >& linkList = graph->links[currentLocation];
 	list< ForwardingLink >::const_iterator itr = linkList.begin();
 	// input_port as a filter
 	if(lastHop.compare("NULL") == 0 || itr->rule.in_port == 65536){
@@ -1188,9 +1281,14 @@ bool VeriFlow::traverseForwardingGraph(const EquivalenceClass& packetClass, Forw
 	else{
 		// fprintf(fp, "\nfinding lastHop %s", lastHop.c_str());
 		while(itr != linkList.end()){
-			string connected_hop = network.getNextHopIpAddress(currentLocation, itr->rule.in_port);
-			// fprintf(fp, "\n%s -> %u:%s", connected_hop.c_str(), itr->rule.in_port, currentLocation.c_str());
-			if(connected_hop.compare(lastHop) == 0) break;
+			auto range = itr->rule.getEquivalenceRange(NW_DST);
+			if(range.lowerBound <= packetClass.lowerBound[NW_DST] && packetClass.upperBound[NW_DST] <= range.upperBound) {
+				string connected_hop = network.getNextHopIpAddress(currentLocation, itr->rule.in_port);
+				// fprintf(stdout, "\n%s -> %u:%s", connected_hop.c_str(), itr->rule.in_port, currentLocation.c_str());
+				if(connected_hop.compare(lastHop) == 0) {
+					break;
+				}
+			}
 			itr++;
 		}
 	}
@@ -1200,12 +1298,12 @@ bool VeriFlow::traverseForwardingGraph(const EquivalenceClass& packetClass, Forw
 		// fprintf(fp, "\nFOUND BLACK HOLE TYPE 3\n[PATH: %s]\n", path.c_str());
 		// fprintf(fp, "[VeriFlow::traverseForwardingGraph] Found a BLACK HOLE for the following packet class as there is no outgoing link at current location (%s).\n", currentLocation.c_str());
 		// fprintf(fp, "[VeriFlow::traverseForwardingGraph] PacketClass: %s\n", packetClass.toString().c_str());
-		for(unsigned int i = 0; i < faults.size(); i++) {
-			if (packetClass.subsumes(faults[i])) {
-				faults.erase(faults.begin() + i);
-				i--;
-			}
-		}
+		// for(unsigned int i = 0; i < faults.size(); i++) {
+		// 	if (packetClass.subsumes(faults[i])) {
+		// 		faults.erase(faults.begin() + i);
+		// 		i--;
+		// 	}
+		// }
 		faults.push_back(packetClass);
 
 		return false;
@@ -1242,6 +1340,23 @@ bool VeriFlow::traverseForwardingGraph(const EquivalenceClass& packetClass, Forw
 
 		return this->traverseForwardingGraph(packetClass, graph, itr->rule.nextHop, currentLocation, visited, path, fp);
 	}
+}
+
+list< ForwardingLink > VeriFlow::processGraphForPKT(const list< ForwardingLink >& linkList, const EquivalenceClass& packetClass)
+{
+	list< ForwardingLink > retList;
+	list< ForwardingLink >::const_iterator itr = linkList.begin();
+	while(itr != linkList.end()) {
+		if(itr->rule.getEquivalenceClass().subsumes(packetClass)) {
+			retList.push_back(*itr);
+		}
+		/* TODO:
+		   1. 根据rule的location修改原有全局图的边（规则）的applyRange，将rule的nextHop信息更新了
+		   2. 遍历图时根据每个等价类，返回全局图的当前节点对此apply的子规则列表
+		*/
+		itr++;
+	}
+	return retList;
 }
 
 int VeriFlow::getTotalRuleCount() const

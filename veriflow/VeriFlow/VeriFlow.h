@@ -118,6 +118,16 @@ public:
 	uint64_t getDatapathId(unsigned short socketPort);
 
 	void print(FILE* fp) const;
+
+	list< ForwardingLink > processGraphForPKT(const list< ForwardingLink >& linkList, const EquivalenceClass& packetClass);
+	void print_globalIP();
+};
+
+class IPAtom {
+public:
+	IPAtom(uint64_t, int);
+	uint64_t ip;
+	int id;
 };
 
 #endif /* VERIFLOW_H_ */
