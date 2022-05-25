@@ -67,6 +67,8 @@ vector<EquivalenceClass> faults;
 
 calcTime calctime;
 
+ForwardingGraph* globalGraph = new ForwardingGraph;
+
 int main(int argc, char** argv)
 {
 	if(argc == 1)
@@ -515,6 +517,41 @@ bool VeriFlow::addRule(const Rule& rule)
 			}
 
 			leaf->ruleSet->insert(rule);
+			if(rule.type != FORWARDING)
+			{
+				continue;
+			}
+
+			if(rule.priority == INVALID_PRIORITY)
+			{
+				continue;
+			}
+
+			ForwardingLink link(rule, false);
+
+			if(mode == TEST_MODE)
+			{
+				// For the testVerification() experiment present in Test.cpp.
+				if(rule.location.compare(rule.nextHop) == 0)
+				{
+					link.isGateway = true;
+				}
+			}
+			else if(mode == PROXY_MODE)
+			{
+				if(rule.nextHop.compare(rule.fieldValue[NW_DST]) == 0)
+				{
+					link.isGateway = true;
+				}
+				for(unsigned int i=0; i < endhosts.size(); i++){
+					if (rule.nextHop.compare(endhosts[i])==0){
+						link.isGateway = true;
+						break;
+					}
+				}
+			}
+
+			globalGraph->addLink(link);
 		}
 		else
 		{
@@ -1026,14 +1063,14 @@ bool VeriFlow::verifyRule(const Rule& rule, int command, double& updateTime, dou
 
 	// fprintf(stdout, "[VeriFlow::verifyRule] Generating forwarding graphs...\n");
 	gettimeofday(&start, NULL);
-	vector< ForwardingGraph* > vGraph;
-	for(unsigned int i = 0; i < vFinalPacketClasses.size(); i++)
-	{
-		EquivalenceClass packetClass = vFinalPacketClasses[i];
-		// fprintf(stdout, "[VeriFlow::verifyRule] [%u] ecCount: %lu, %s\n", i, ecCount, packetClass.toString().c_str());
-		ForwardingGraph* graph = Trie::getForwardingGraph(TP_DST, vFinalTries[i], packetClass, fp);
-		vGraph.push_back(graph);
-	}
+	// vector< ForwardingGraph* > vGraph;
+	// for(unsigned int i = 0; i < vFinalPacketClasses.size(); i++)
+	// {
+	// 	EquivalenceClass packetClass = vFinalPacketClasses[i];
+	// 	// fprintf(stdout, "[VeriFlow::verifyRule] [%u] ecCount: %lu, %s\n", i, ecCount, packetClass.toString().c_str());
+	// 	ForwardingGraph* graph = Trie::getForwardingGraph(TP_DST, vFinalTries[i], packetClass, fp);
+	// 	vGraph.push_back(graph);
+	// }
 	gettimeofday(&end, NULL);
 	// fprintf(stdout, "[VeriFlow::verifyRule] Generated forwarding graphs.\n");
 
@@ -1046,15 +1083,16 @@ bool VeriFlow::verifyRule(const Rule& rule, int command, double& updateTime, dou
 	gettimeofday(&start, NULL);
 	// Add query code here
 	size_t currentFailures = 0;
-	for(unsigned int i = 0; i < vGraph.size(); i++)
+	for(unsigned int i = 0; i < vFinalPacketClasses.size(); i++)
 	{
 		unordered_set< string > visited;
 		string path;
 		string lastHop = network.getNextHopIpAddress(rule.location,rule.in_port);
 		// fprintf(fp, "start traversing at: %s\n", rule.location.c_str());
-		if(!this->traverseForwardingGraph(vFinalPacketClasses[i], vGraph[i], rule.location, lastHop, visited, path, fp)) {
+		if(!this->traverseForwardingGraph(vFinalPacketClasses[i], globalGraph, rule.location, lastHop, visited, path, fp)) {
 			++currentFailures;
 		}
+		// fprintf(stdout, "start traversing at: %s\n", rule.location.c_str());
 	}
 
 	gettimeofday(&end, NULL);
@@ -1086,10 +1124,10 @@ bool VeriFlow::verifyRule(const Rule& rule, int command, double& updateTime, dou
 	usecTime = (seconds * 1000000) + useconds;
 	queryTime = usecTime;
 
-	for(unsigned int i = 0; i < vGraph.size(); i++)
-	{
-		delete vGraph[i];
-	}
+	// for(unsigned int i = 0; i < vGraph.size(); i++)
+	// {
+	// 	delete vGraph[i];
+	// }
 
 	fprintf(fp, "updateTime = %.2fus packetClassSearchTime = %.2fus graphBuildTime = %.2fus queryTime = %.2fus\n", updateTime, packetClassSearchTime, graphBuildTime, queryTime);
 	fprintf(fp, "totalTime = %.2fus\n", updateTime + packetClassSearchTime + graphBuildTime + queryTime);
@@ -1188,9 +1226,14 @@ bool VeriFlow::traverseForwardingGraph(const EquivalenceClass& packetClass, Forw
 	else{
 		// fprintf(fp, "\nfinding lastHop %s", lastHop.c_str());
 		while(itr != linkList.end()){
-			string connected_hop = network.getNextHopIpAddress(currentLocation, itr->rule.in_port);
-			// fprintf(fp, "\n%s -> %u:%s", connected_hop.c_str(), itr->rule.in_port, currentLocation.c_str());
-			if(connected_hop.compare(lastHop) == 0) break;
+			auto range = itr->rule.getEquivalenceRange(NW_DST);
+			if(range.lowerBound <= packetClass.lowerBound[NW_DST] && packetClass.upperBound[NW_DST] <= range.upperBound) {
+				string connected_hop = network.getNextHopIpAddress(currentLocation, itr->rule.in_port);
+				// fprintf(stdout, "\n%s -> %u:%s", connected_hop.c_str(), itr->rule.in_port, currentLocation.c_str());
+				if(connected_hop.compare(lastHop) == 0) {
+					break;
+				}
+			}
 			itr++;
 		}
 	}

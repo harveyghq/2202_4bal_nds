@@ -17,7 +17,10 @@
 #define FORWARDINGLINK_H_
 
 #include <string>
+#include <unordered_set>
+#include "EquivalenceClass.h"
 #include "Rule.h"
+#include "Template.h"
 
 using namespace std;
 
