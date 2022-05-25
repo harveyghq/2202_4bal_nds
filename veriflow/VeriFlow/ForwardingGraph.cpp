@@ -44,8 +44,19 @@ bool ForwardingGraph::addLink(const ForwardingLink& link)
 	}
 	else
 	{
+		list< ForwardingLink >& linkList = this->links[link.rule.location];
+		list< ForwardingLink >::iterator itr;
+		for(itr = linkList.begin(); itr != linkList.end(); ++itr)
+		{
+			if(itr->rule.priority <= link.rule.priority)
+			{
+				linkList.insert(itr, link);
+				++(this->totalRuleCount);
+				return true;
+			}
+		}
+		// itr == linkList.end()
 		this->links[link.rule.location].push_back(link);
-		this->links[link.rule.location].sort(compareForwardingLink);
 		++(this->totalRuleCount);
 		return true;
 	}
