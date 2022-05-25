@@ -92,6 +92,17 @@ string convertIntToString(unsigned int value);
 
 bool compareForwardingLink(const ForwardingLink& first, const ForwardingLink& second);
 
+void* traverseForwardingGraphThread(void *arg);
+struct TraverseGraphArgs
+{
+	~TraverseGraphArgs();
+	const EquivalenceClass* packetClass;
+	ForwardingGraph* graph;
+	const Rule* rule;
+    string* currentLocation;
+	FILE* fp;
+};
+
 class VeriFlow
 {
 private:
@@ -111,6 +122,7 @@ public:
 
 	bool verifyRule(const Rule& rule, int command, double& updateTime, double& packetClassSearchTime, double& graphBuildTime, double& queryTime, unsigned long& ecCount, FILE* fp);
 	bool traverseForwardingGraph(const EquivalenceClass& packetClass, ForwardingGraph* graph, const string& currentLocation, const string& lastHop, unordered_set < string > visited, string& path, FILE* fp);
+	void createTraverseForwardingGraphThread(TraverseGraphArgs *traverseGraphArgs, const EquivalenceClass& packetClass, ForwardingGraph* graph, const Rule& rule, pthread_t& thread, FILE* fp);
 
 	int getTotalRuleCount() const;
 
