@@ -1215,7 +1215,7 @@ bool VeriFlow::traverseForwardingGraph(const EquivalenceClass& packetClass, Forw
 		return false;
 	}
 
-	graph->links[currentLocation].sort(compareForwardingLink);
+	// graph->links[currentLocation].sort(compareForwardingLink);
 
 	const list< ForwardingLink >& linkList = graph->links[currentLocation];
 	list< ForwardingLink >::const_iterator itr = linkList.begin();

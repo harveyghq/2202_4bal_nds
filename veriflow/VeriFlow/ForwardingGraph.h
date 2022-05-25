@@ -36,4 +36,6 @@ public:
 	string toString() const;
 };
 
+extern bool compareForwardingLink(const ForwardingLink& first, const ForwardingLink& second);
+
 #endif /* FORWARDINGGRAPH_H_ */

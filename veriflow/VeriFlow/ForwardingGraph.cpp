@@ -45,6 +45,7 @@ bool ForwardingGraph::addLink(const ForwardingLink& link)
 	else
 	{
 		this->links[link.rule.location].push_back(link);
+		this->links[link.rule.location].sort(compareForwardingLink);
 		++(this->totalRuleCount);
 		return true;
 	}
